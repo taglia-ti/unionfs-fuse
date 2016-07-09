@@ -28,13 +28,26 @@
 
 
 /**
- * Actually create the directory here.
+ * Create the parent folder on RW branch.
+ * @param path Path to the created, relative to our mount point.
+ * @param length Consider up to 'length' bytes in 'path'.
+ *		Zero means the whole string.
+ * @param nbranch_ro Read-Only branch index from the directory which the stats
+ *		will be copied from.
+ * @param nbranch_rw Writable branch index where the directory will be created.
+ * @return 0 upon success, any other value means an error.
  */
-static int do_create(const char *path, int nbranch_ro, int nbranch_rw) {
+static int do_create(const char *path, size_t length, int nbranch_ro,
+					 int nbranch_rw) {
 	DBG("%s\n", path);
 
+	if (length == 0) length = strlen(path);
+	size_t branch_length = uopt.branches[nbranch_rw].path_len;
+	if (length + branch_length >= PATHLEN_MAX) RETURN(-ENAMETOOLONG);
 	char dirp[PATHLEN_MAX]; // dir path to create
-	sprintf(dirp, "%s%s", uopt.branches[nbranch_rw].path, path);
+	memcpy(dirp, uopt.branches[nbranch_rw].path, branch_length);
+	memcpy((dirp + branch_length), path, length);
+	dirp[length + branch_length] = '\0'; // we may not have copied it
 
 	struct stat buf;
 	int res = stat(dirp, &buf);
@@ -46,8 +59,12 @@ static int do_create(const char *path, int nbranch_ro, int nbranch_rw) {
 		buf.st_mode = S_IRWXU | S_IRWXG;
 	} else {
 		// data from the ro-branch
+		branch_length = uopt.branches[nbranch_ro].path_len;
+		if (length + branch_length >= PATHLEN_MAX) RETURN(-ENAMETOOLONG);
 		char o_dirp[PATHLEN_MAX]; // the pathname we want to copy
-		sprintf(o_dirp, "%s%s", uopt.branches[nbranch_ro].path, path);
+		memcpy(o_dirp, uopt.branches[nbranch_ro].path, branch_length);
+		memcpy((o_dirp + branch_length), path, length);
+		o_dirp[length + branch_length] = '\0'; // we may not have copied it
 		res = stat(o_dirp, &buf);
 		if (res == -1) RETURN(1); // lower level branch removed in the mean time?
 	}
@@ -94,10 +111,9 @@ int path_create(const char *path, int nbranch_ro, int nbranch_rw) {
 		// walk over the directory name, walk will now be /dir2
 		while (*walk != '\0' && *walk != '/') walk++;
 
-		// +1 due to \0, which gets added automatically
-		snprintf(p, (walk - path) + 1, "%s", path); // walk - path = strlen(/dir1)
-		int res = do_create(p, nbranch_ro, nbranch_rw);
-		if (res) RETURN(res); // creating the directory failed
+		// walk - path = strlen(/dir1)
+		int res = do_create(path, (walk - path), nbranch_ro, nbranch_rw);
+		if (res != 0) RETURN(res); // creating the directory failed
 
 		// as above the do loop, walk over the next slashes, walk = dir2/
 		while (*walk == '/') walk++;

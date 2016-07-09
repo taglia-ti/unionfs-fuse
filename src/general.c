@@ -33,15 +33,25 @@
 #include "usyslog.h"
 
 /**
- * Check if a file or directory with the hidden flag exists.
+ * Check if a file or directory is hidden.
+ * @param path Path to be tested.
+ * @param length Consider up to 'length' bytes in 'path'.
+ *  	Zero means the whole string.
+ * @retval 1 If the file is hidden.
+ * @retval 0 if it's not.
  */
-static int filedir_hidden(const char *path) {
+static int filedir_hidden(const char *path, size_t length) {
 	// cow mode disabled, no need for hidden files
 	if (!uopt.cow_enabled) RETURN(false);
 	
 	char p[PATHLEN_MAX];
-	if (strlen(path) + strlen(HIDETAG) > PATHLEN_MAX) RETURN(-ENAMETOOLONG);
-	snprintf(p, PATHLEN_MAX, "%s%s", path, HIDETAG); 
+	static const size_t tag_length = strlen(HIDETAG);
+
+	if (length == 0) length = strlen(path);
+	if (length + tag_length >= PATHLEN_MAX) RETURN(-ENAMETOOLONG);
+	memcpy(p, path, length);
+	memcpy((p + length), HIDETAG, tag_length);
+	p[length + tag_length] = '\0';
 	DBG("%s\n", p);
 
 	struct stat stbuf;
@@ -71,13 +81,10 @@ int path_hidden(const char *path, int branch) {
 	do {
 		// walk over the directory name, walk will now be /dir2
 		while (*walk != '\0' && *walk != '/') walk++;
-	
-		// +1 due to \0, which gets added automatically
-		char p[PATHLEN_MAX];
+
 		// walk - path = strlen(/dir1)
-		snprintf(p, (walk - whiteoutpath) + 1, "%s", whiteoutpath);
-		int res = filedir_hidden(p);
-		if (res) RETURN(res); // path is hidden or error
+		int res = filedir_hidden(whiteoutpath, (walk - whiteoutpath));
+		if (res != 0) RETURN(res); // path is hidden or error
 
 		// as above the do loop, walk over the next slashes, walk = dir2/
 		while (*walk == '/') walk++;
