@@ -7,14 +7,13 @@ unionfsctl
 build/*
 BUILD/*
 
+# coverage results
+coverage/*
+*.gcda
+*.gcno
+
 # codelite project files
 *.project
-
-# vi tmp files
-*.swp
-
-# build directory
-build/*
 
 # vi tmp files
 *.swp
@@ -50,6 +49,7 @@ logs
 
 # OS and Editor Artifacts
 .DS_Store
+.directory
 *.diff
 *~
 
@@ -71,3 +71,5 @@ Doxyfile
 # diff rejects
 *.rej
 
+# fuse leftovers
+.fuse_hidden*
