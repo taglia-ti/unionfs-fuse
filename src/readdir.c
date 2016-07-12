@@ -37,23 +37,18 @@
   */
 static bool hide_meta_files(int branch, const char *path, struct dirent *de)
 {
-
+	DBG("path = %s, name = %s\n", path, de->d_name);
 	if (uopt.hide_meta_files == false) RETURN(false);
 
-	fprintf(stderr, "uopt.branches[branch].path = %s path = %s\n", uopt.branches[branch].path, path);
-	fprintf(stderr, "METANAME = %s, de->d_name = %s\n", METANAME, de->d_name);
-
-	// TODO Would it be faster to add hash comparison?
+	// HIDE fuse META files
+	if  (strncmp(FUSE_META_FILE, de->d_name, FUSE_META_LENGTH) == 0)
+		RETURN(true);
 
 	// HIDE out .unionfs directory
-	if (strcmp(uopt.branches[branch].path, path) == 0
-	&&  strcmp(METANAME, de->d_name) == 0) {
+	if (strcmp(METANAME, de->d_name) == 0
+	&&  strcmp(uopt.branches[branch].path, path) == 0) {
 		RETURN(true);
 	}
-
-	// HIDE fuse META files
-	if  (strncmp(FUSE_META_FILE, de->d_name, FUSE_META_LENGTH) == 0) 
-		RETURN(true);
 
 	RETURN(false);
 }
