@@ -53,79 +53,71 @@ char *whiteout_tag(const char *fname) {
  * 
  * path already MUST have been allocated!
  */
-int build_path(char *path, int max_len, const char *callfunc, int line, ...) {
+int build_path(char *path, size_t max_len, const char *callfunc, int line, ...) {
 	va_list ap; // argument pointer
-	int len = 0;
+	size_t len = 0;
+	size_t arg_len;
 	char *str_ptr = path;
+	char *arg;
 
 	(void)str_ptr; // please the compile to avoid warning in non-debug mode
 	(void)line;
 	(void)callfunc; 
 
-	path[0] = '\0'; // that way can easily strcat even the first element
-
 	va_start(ap, line);
-	while (1) {
-		char *str = va_arg (ap, char *); // the next path element
-		if (!str) break;
-
-		/* Prevent '//' in pathes, if len > 0 we are not in the first 
-		 * loop-run. This is rather ugly, but I don't see another way to 
-		 * make sure there really is a '/'. By simply cutting off
-		 * the initial '/' of the added string, we could run into a bug
-		 * and would not have a '/' between path elements at all
-		 * if somewhere else a directory slash has been forgotten... */
-		if (len > 0) {
-			// walk to the end of path
-			while (*path != '\0') path++;
-			
-			// we are on '\0', now go back to the last char
-			path--;
-			
-			if (*path == '/') {
-				int count = len;
-				
-				// count makes sure nobody tricked us and gave
-				// slashes as first path only...
-				while (*path == '/' && count > 1) {
-					// possibly there are several slashes...
-					// But we want only one slash
-					path--;
-					count--; 
-				}
-					
-				// now we are *before* '/', walk to slash again
-				path++;
-				
-				// eventually we walk over the slashes of the
-				// next string
-				while (*str == '/') str++;
-			} else if (*str != '/') {
-				// neither path ends with a slash, nor str
-				// starts with a slash, prevent a wrong path
-				strcat(path, "/");
-				len++;
-			}
-		}
+	*path = '\0';
+	/* This is the first step of the loop unrolled due to differences */
+	arg = va_arg(ap, char *); // the first path element
+	if(arg == NULL || (arg_len = strlen(arg)) == 0){
 		va_end(ap);
+		USYSLOG(LOG_ERR, "from: %s():%d : No argument given?\n", callfunc, line);
+		errno = EIO;
+		RETURN(-errno);
+	}
+	if(len + arg_len + 1 > max_len){ // +1 for final '\0'
+		va_end(ap);
+		USYSLOG (LOG_WARNING, "%s():%d Path too long \n", callfunc, line);
+		errno = ENAMETOOLONG;
+		RETURN(-errno);
+	}
+	memcpy(path, arg, arg_len);
+	len += arg_len;
+	path += arg_len; // walk to the end of path
 
-		len += strlen(str);
+	while((arg = va_arg(ap, char *)) != NULL){
+		/* Prevent "//" in paths, we have actually 3 possibilities here
+		 * 1 - When our partial path ends with '/' and the next append starts
+		 * with '/', which would give us "//".
+		 * 2 - When there isn't '/' in neither.
+		 * 3 - When there is a '/' on the end of our partial string or in the
+		 * beginning of the next part, which in that case we don't need to do
+		 * anything.
+		 */
+		if(path[-1] == '/' && arg[0] == '/'){
+			path--;
+			len--;
+		}
+		else if(path[-1] != '/' && arg[0] != '/'){
+			*path = '/';
+			path++;
+			len++;
+		}
+		arg_len = strlen(arg);
 
-		// +1 for final \0 not counted by strlen
-		if (len + 1 > max_len) {
+		if(len + arg_len + 1 > max_len){ // +1 for final '\0'
+			*path = '\0';
+			va_end(ap);
 			USYSLOG (LOG_WARNING, "%s():%d Path too long \n", callfunc, line);
 			errno = ENAMETOOLONG;
 			RETURN(-errno);
 		}
 
-		strcat (path, str);
+		memcpy(path, arg, arg_len);
+		len += arg_len;
+		path += arg_len; // walk to the end of path
 	}
-	
-	if (len == 0) {
-		USYSLOG(LOG_ERR, "from: %s():%d : No argument given?\n", callfunc, line);
-		errno = EIO;
-		RETURN(-errno);
-	}
+	*path = '\0';
+	va_end(ap);
 	
 	DBG("from: %s():%d path: %s\n", callfunc, line, str_ptr);
 	RETURN(0);
